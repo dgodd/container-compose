@@ -122,16 +122,41 @@ func main() {
 		log.Fatal(err)
 	}
 
-	for name, service := range config.Services {
-		inspectData, err := inspectService(name)
-		if err == nil && inspectData.Status == "running" {
-			log.Printf("Service %s is already running\n", name)
-			continue
-		}
+	if len(os.Args) != 2 {
+		log.Fatalf("Usage: %s <start|status|stop>", os.Args[0])
+	}
 
-		err = startService(name, &service)
-		if err != nil {
-			log.Fatal(err)
+	switch os.Args[1] {
+	case "start":
+		for name, service := range config.Services {
+			inspectData, err := inspectService(name)
+			if err == nil && inspectData.Status == "running" {
+				log.Printf("Service %s is already running\n", name)
+				continue
+			}
+			err = startService(name, &service)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
+	case "status":
+		for name, _ := range config.Services {
+			inspectData, err := inspectService(name)
+			if err != nil {
+				log.Printf("Service %s: %s\n", name, err)
+			} else {
+				log.Printf("Service %s: %s\n", name, inspectData.Status)
+			}
+		}
+	case "stop":
+		for name, _ := range config.Services {
+			log.Printf("Stopping service %s\n", name)
+			err := exec.Command("container", "stop", name).Run()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	default:
+		log.Fatalf("Usage: %s <start|status|stop>", os.Args[0])
 	}
 }
