@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -17,8 +18,8 @@ type Config struct {
 }
 
 type Service struct {
-	Image       string   `yaml:"image"`
-	Platform    string   `yaml:"platform"`
+	Image    string `yaml:"image"`
+	Platform string `yaml:"platform"`
 	// Ports       []string `yaml:"ports"` // TODO: HOW??
 	Environment []string `yaml:"environment"`
 	Command     []string `yaml:"command"`
@@ -97,9 +98,14 @@ func startService(name string, service *Service) error {
 	}
 	for _, volume := range service.Volumes {
 		if strings.HasPrefix(volume, "./") {
-			volume = strings.Replace(volume, "./", "/", 1)
-			} else if !strings.HasPrefix(volume, "/") {
-				volume = append("/", volume)
+			volume = strings.Replace(volume, "./", "", 1)
+		}
+		if !strings.HasPrefix(volume, "/") {
+			path, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			volume = filepath.Join(path, volume)
 		}
 		args = append(args, "--volume", volume)
 	}
@@ -109,7 +115,7 @@ func startService(name string, service *Service) error {
 	// 	args = append(args, Service.Command[1:]...)
 	// }
 	args = append(args, service.Image)
-	// fmt.Println("    container", strings.Join(args, " "))
+	// fmt.Println("container", strings.Join(args, " "))
 	cmd := exec.Command("container", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
