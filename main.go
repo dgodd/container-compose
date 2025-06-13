@@ -14,15 +14,16 @@ import (
 )
 
 type Config struct {
-	Services map[string]Service `yaml:"services"`
+	Services map[string]*Service `yaml:"services"`
 }
 
 type Service struct {
+	Name    string `yaml:"-"`
 	Image    string `yaml:"image"`
 	Platform string `yaml:"platform"`
 	// Ports       []string `yaml:"ports"` // TODO: HOW??
 	Environment []string `yaml:"environment"`
-	Command     []string `yaml:"command"`
+	// Command     []string `yaml:"command"` // TODO?? Also entry-point?
 	Volumes     []string `yaml:"volumes"`
 	Deploy      struct {
 		Resources struct {
@@ -41,6 +42,9 @@ func getConfig() (*Config, error) {
 	}
 	defer fh.Close()
 	yaml.NewDecoder(fh).Decode(&config)
+	for name, service := range config.Services {
+		service.Name = name
+	}
 	return &config, nil
 }
 
@@ -56,10 +60,10 @@ type InspectData struct {
 	Networks []Network `json:"networks"`
 }
 
-func inspectService(name string) (*InspectData, error) {
+func (service *Service) Inspect() (*InspectData, error) {
 	r, w := io.Pipe()
 	decoder := json.NewDecoder(r)
-	cmd := exec.Command("container", "inspect", name)
+	cmd := exec.Command("container", "inspect", service.Name)
 	cmd.Stdout = w
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
@@ -76,16 +80,16 @@ func inspectService(name string) (*InspectData, error) {
 		return nil, err
 	}
 	if len(inspectData) == 0 {
-		return nil, fmt.Errorf("no data found for service %s", name)
+		return nil, fmt.Errorf("no data found for service %s", service.Name)
 	}
 	return &inspectData[0], nil
 }
 
-func startService(name string, service *Service) error {
-	log.Printf("Starting service %s\n", name)
+func (service *Service)  Start() error {
+	log.Printf("Starting service %s\n", service.Name)
 
 	// TODO: better name (eg. prefix name with service)
-	args := []string{"run", "--name", name, "--detach", "--rm", "--dns-domain", "test"}
+	args := []string{"run", "--name", service.Name, "--detach", "--rm", "--dns-domain", "test"}
 	if service.Platform != "" {
 		arch := strings.TrimPrefix(service.Platform, "linux/")
 		args = append(args, "--arch", arch)
@@ -109,11 +113,6 @@ func startService(name string, service *Service) error {
 		}
 		args = append(args, "--volume", volume)
 	}
-	// TODO: Is the below correct??
-	// if len(Service.Command) > 0 {
-	// 	args = append(args, "--entrypoint", Service.Command[0])
-	// 	args = append(args, Service.Command[1:]...)
-	// }
 	args = append(args, service.Image)
 	// fmt.Println("container", strings.Join(args, " "))
 	cmd := exec.Command("container", args...)
@@ -121,6 +120,11 @@ func startService(name string, service *Service) error {
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
+
+func (service *Service)  Stop() error {
+	return  exec.Command("container", "stop", service.Name).Run()
+}
+
 
 func main() {
 	config, err := getConfig()
@@ -136,12 +140,12 @@ func main() {
 	case "start":
 		var anyError error
 		for name, service := range config.Services {
-			inspectData, err := inspectService(name)
+			inspectData, err := service.Inspect()
 			if err == nil && inspectData.Status == "running" {
 				log.Printf("Service %s is already running\n", name)
 				continue
 			}
-			if err := startService(name, &service); err != nil {
+			if err := service.Start(); err != nil {
 				anyError = err
 				log.Println("ERROR:", err)
 			}
@@ -150,8 +154,8 @@ func main() {
 			log.Fatal(anyError)
 		}
 	case "status":
-		for name, _ := range config.Services {
-			inspectData, err := inspectService(name)
+		for name, service := range config.Services {
+			inspectData, err := service.Inspect()
 			if err != nil {
 				log.Printf("Service %s: %s\n", name, err)
 			} else {
@@ -159,9 +163,9 @@ func main() {
 			}
 		}
 	case "stop":
-		for name, _ := range config.Services {
-			log.Printf("Stopping service %s\n", name)
-			err := exec.Command("container", "stop", name).Run()
+		for _, service := range config.Services {
+			log.Printf("Stopping service %s\n", service.Name)
+			err := service.Stop()
 			if err != nil {
 				log.Fatal(err)
 			}
