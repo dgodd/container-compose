@@ -19,7 +19,7 @@ type Config struct {
 type Service struct {
 	Image       string   `yaml:"image"`
 	Platform    string   `yaml:"platform"`
-	Ports       []string `yaml:"ports"`
+	// Ports       []string `yaml:"ports"` // TODO: HOW??
 	Environment []string `yaml:"environment"`
 	Command     []string `yaml:"command"`
 	Volumes     []string `yaml:"volumes"`
@@ -84,7 +84,7 @@ func startService(name string, service *Service) error {
 	log.Printf("Starting service %s\n", name)
 
 	// TODO: better name (eg. prefix name with service)
-	args := []string{"run", "--name", name, "--detach", "--rm"}
+	args := []string{"run", "--name", name, "--detach", "--rm", "--dns-domain", "test"}
 	if service.Platform != "" {
 		arch := strings.TrimPrefix(service.Platform, "linux/")
 		args = append(args, "--arch", arch)
@@ -92,14 +92,15 @@ func startService(name string, service *Service) error {
 	if service.Deploy.Resources.Limits.Memory != "" {
 		args = append(args, "--memory", service.Deploy.Resources.Limits.Memory)
 	}
-
-	// TODO: HOW??
-	// Ports []string `yaml:"ports"`
-
 	for _, env := range service.Environment {
 		args = append(args, "--env", env)
 	}
 	for _, volume := range service.Volumes {
+		if strings.HasPrefix(volume, "./") {
+			volume = strings.Replace(volume, "./", "/", 1)
+			} else if !strings.HasPrefix(volume, "/") {
+				volume = append("/", volume)
+		}
 		args = append(args, "--volume", volume)
 	}
 	// TODO: Is the below correct??
@@ -108,12 +109,11 @@ func startService(name string, service *Service) error {
 	// 	args = append(args, Service.Command[1:]...)
 	// }
 	args = append(args, service.Image)
-	// fmt.Println(strings.Join(args, " "))
+	// fmt.Println("    container", strings.Join(args, " "))
 	cmd := exec.Command("container", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	return err
+	return cmd.Run()
 }
 
 func main() {
@@ -128,16 +128,20 @@ func main() {
 
 	switch os.Args[1] {
 	case "start":
+		var anyError error
 		for name, service := range config.Services {
 			inspectData, err := inspectService(name)
 			if err == nil && inspectData.Status == "running" {
 				log.Printf("Service %s is already running\n", name)
 				continue
 			}
-			err = startService(name, &service)
-			if err != nil {
-				log.Fatal(err)
+			if err := startService(name, &service); err != nil {
+				anyError = err
+				log.Println("ERROR:", err)
 			}
+		}
+		if anyError != nil {
+			log.Fatal(anyError)
 		}
 	case "status":
 		for name, _ := range config.Services {
