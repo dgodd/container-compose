@@ -18,12 +18,13 @@ type Config struct {
 }
 
 type Service struct {
-	Name    string `yaml:"-"`
+	Name     string `yaml:"-"`
 	Image    string `yaml:"image"`
 	Platform string `yaml:"platform"`
 	// Ports       []string `yaml:"ports"` // TODO: HOW??
+	Workdir     string   `yaml:"working_dir"`
 	Environment []string `yaml:"environment"`
-	// Command     []string `yaml:"command"` // TODO?? Also entry-point?
+	Command     string   `yaml:"command"` // TODO?? Also entry-point?
 	Volumes     []string `yaml:"volumes"`
 	Deploy      struct {
 		Resources struct {
@@ -85,14 +86,18 @@ func (service *Service) Inspect() (*InspectData, error) {
 	return &inspectData[0], nil
 }
 
-func (service *Service)  Start() error {
-	log.Printf("Starting service %s\n", service.Name)
-
+func (service *Service) Start(detach bool, runArgs []string) error {
 	// TODO: better name (eg. prefix name with service)
-	args := []string{"run", "--name", service.Name, "--detach", "--rm", "--dns-domain", "test"}
+	args := []string{"run", "--name", service.Name, "--rm", "--dns-domain", "test"}
+	if detach {
+		args = append(args, "--detach")
+	}
 	if service.Platform != "" {
 		arch := strings.TrimPrefix(service.Platform, "linux/")
 		args = append(args, "--arch", arch)
+	}
+	if service.Workdir != "" {
+		args = append(args, "--workdir", service.Workdir)
 	}
 	if service.Deploy.Resources.Limits.Memory != "" {
 		args = append(args, "--memory", service.Deploy.Resources.Limits.Memory)
@@ -114,17 +119,21 @@ func (service *Service)  Start() error {
 		args = append(args, "--volume", volume)
 	}
 	args = append(args, service.Image)
-	// fmt.Println("container", strings.Join(args, " "))
+	if service.Command != "" {
+		commands := strings.Split(service.Command, " ")
+		args = append(args, commands...)
+	}
+	args = append(args, runArgs...)
+	fmt.Println("container", strings.Join(args, " "))
 	cmd := exec.Command("container", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
-func (service *Service)  Stop() error {
-	return  exec.Command("container", "stop", service.Name).Run()
+func (service *Service) Stop() error {
+	return exec.Command("container", "stop", service.Name).Run()
 }
-
 
 func main() {
 	config, err := getConfig()
@@ -132,8 +141,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if len(os.Args) != 2 {
-		log.Fatalf("Usage: %s <start|status|stop>", os.Args[0])
+	if !(len(os.Args) == 2 || (len(os.Args) >= 3 && os.Args[1] == "run")) {
+		log.Fatalf("Usage: %s <start|status|run serviceName|stop>", os.Args[0])
 	}
 
 	switch os.Args[1] {
@@ -145,7 +154,8 @@ func main() {
 				log.Printf("Service %s is already running\n", name)
 				continue
 			}
-			if err := service.Start(); err != nil {
+			log.Printf("Starting service %s\n", service.Name)
+			if err := service.Start(true, nil); err != nil {
 				anyError = err
 				log.Println("ERROR:", err)
 			}
@@ -162,6 +172,16 @@ func main() {
 				log.Printf("Service %s: %s\n", name, inspectData.Status)
 			}
 		}
+	case "run":
+		for name, service := range config.Services {
+			if name == os.Args[2] {
+				log.Printf("Running service %s\n", service.Name)
+				if err := service.Start(false, os.Args[3:]); err != nil {
+					log.Fatal(err)
+				}
+				log.Printf("Service %s started\n", name)
+			}
+		}
 	case "stop":
 		for _, service := range config.Services {
 			log.Printf("Stopping service %s\n", service.Name)
@@ -171,6 +191,6 @@ func main() {
 			}
 		}
 	default:
-		log.Fatalf("Usage: %s <start|status|stop>", os.Args[0])
+		log.Fatalf("Usage: %s <start|status|run|stop>", os.Args[0])
 	}
 }
