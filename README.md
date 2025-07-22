@@ -10,8 +10,9 @@ interesting.
 1. First install Apple's "container" using [Container
 Tutoral](https://github.com/apple/container/blob/main/docs/tutorial.md), you
 will need to setup dns using "test" as a domain (as suggested in the doc).
-2. Copy the latest release of "container-compose" to the path
-3. Run "container-compose" from a directory with a "docker-compose.yml" file.
+Currently that means running `container system start` and `sudo container system dns create test`.
+3. Copy the latest release of "container-compose" to the path
+4. Run "container-compose" from a directory with a "docker-compose.yml" file.
 
 ## Build
 
