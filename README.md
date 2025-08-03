@@ -2,8 +2,8 @@
 
 Run containers using apple's new "container" command and "docker-compose.yml"
 
-NOTE: This is currently very much a proof of concept to see if the idea is
-interesting.
+NOTE: While this is currently very much an MVP, I have been using it myself for the
+last 2 months.
 
 ## Install
 
