@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	Name     string              `yaml:"name"`
 	Services map[string]*Service `yaml:"services"`
 }
 
@@ -43,8 +44,16 @@ func getConfig() (*Config, error) {
 	}
 	defer fh.Close()
 	yaml.NewDecoder(fh).Decode(&config)
+	if config.Name == "" {
+		dir, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		dir = filepath.Base(dir)
+		config.Name = dir
+	}
 	for name, service := range config.Services {
-		service.Name = name
+		service.Name = config.Name + "-" + name
 	}
 	return &config, nil
 }
