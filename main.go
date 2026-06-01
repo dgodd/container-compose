@@ -325,12 +325,19 @@ parseCommand:
 			}
 		}
 	case "status", "ps", "ls":
+		var statusErrors []string
 		for _, service := range sortedServices(config) {
 			inspectData, err := service.Inspect()
 			if err != nil {
-				log.Printf("Service %s: %s\n", service.Name, err)
+				statusErrors = append(statusErrors, fmt.Sprintf("Service %s: %s", service.Name, err))
 			} else {
 				log.Printf("Service %s: %s\n", service.Name, inspectData.Status)
+			}
+		}
+		if len(statusErrors) > 0 {
+			log.Println("--- Errors ---")
+			for _, errMsg := range statusErrors {
+				log.Println(errMsg)
 			}
 		}
 	case "run":
@@ -344,6 +351,7 @@ parseCommand:
 			}
 		}
 	case "stop":
+		var stopErrors []string
 		// Stop in reverse dependency order (dependents first, then dependencies)
 		sorted := sortedServices(config)
 		for i := len(sorted) - 1; i >= 0; i-- {
@@ -351,7 +359,13 @@ parseCommand:
 			log.Printf("Stopping service %s\n", service.Name)
 			err := service.Stop()
 			if err != nil {
-				log.Fatal(err)
+				stopErrors = append(stopErrors, fmt.Sprintf("Service %s: %s", service.Name, err))
+			}
+		}
+		if len(stopErrors) > 0 {
+			log.Println("--- Errors ---")
+			for _, errMsg := range stopErrors {
+				log.Println(errMsg)
 			}
 		}
 	case "logs":

@@ -82,4 +82,4 @@ When starting, the tool compares the tag of the image the container was created 
 
 ## Unfinished / TODO
 
-- Error handling is basic: `status` and `stop` use `log.Fatal` on first error; `start` logs errors and continues.
+- `restart` policy is parsed in YAML but not passed to `container run`.
