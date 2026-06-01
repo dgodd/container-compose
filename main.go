@@ -27,6 +27,7 @@ type Service struct {
 	Environment []string `yaml:"environment"`
 	Command     []string `yaml:"command"`
 	Entrypoint  string   `yaml:"entrypoint"`
+	DependsOn   []string `yaml:"depends_on"`
 	Volumes     []string `yaml:"volumes"`
 	Deploy      struct {
 		Resources struct {
@@ -180,6 +181,65 @@ func imageTagsDiffer(configured, reference string) bool {
 
 	return cfgTag != refTag
 }
+
+func sortedServices(config *Config) []*Service {
+	// Map names to services for lookup
+	byName := make(map[string]*Service)
+	for _, svc := range config.Services {
+		byName[svc.Name] = svc
+	}
+
+	// Topological sort using Kahn's algorithm
+	inDegree := make(map[string]int)
+	dependents := make(map[string][]string) // service -> services that depend on it
+
+	for _, svc := range config.Services {
+		if _, ok := inDegree[svc.Name]; !ok {
+			inDegree[svc.Name] = 0
+		}
+		for _, dep := range svc.DependsOn {
+			inDegree[svc.Name]++
+			dependents[dep] = append(dependents[dep], svc.Name)
+		}
+	}
+
+	var queue []string
+	for name, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, name)
+		}
+	}
+
+	var sorted []*Service
+	for len(queue) > 0 {
+		name := queue[0]
+		queue = queue[1:]
+		sorted = append(sorted, byName[name])
+		for _, dep := range dependents[name] {
+			inDegree[dep]--
+			if inDegree[dep] == 0 {
+				queue = append(queue, dep)
+			}
+		}
+	}
+
+	// Append any services not in the sort (e.g. circular deps) at the end
+	for _, svc := range config.Services {
+		found := false
+		for _, s := range sorted {
+			if s.Name == svc.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			sorted = append(sorted, svc)
+		}
+	}
+
+	return sorted
+}
+
 func main() {
 	config, err := getConfig()
 	if err != nil {
@@ -193,7 +253,8 @@ func main() {
 	switch os.Args[1] {
 	case "start":
 		var alerts []string
-		for name, service := range config.Services {
+		for _, service := range sortedServices(config) {
+			name := service.Name
 			inspectData, err := service.Inspect()
 			if err == nil {
 				// Container exists
@@ -229,12 +290,12 @@ func main() {
 			}
 		}
 	case "status":
-		for name, service := range config.Services {
+		for _, service := range sortedServices(config) {
 			inspectData, err := service.Inspect()
 			if err != nil {
-				log.Printf("Service %s: %s\n", name, err)
+				log.Printf("Service %s: %s\n", service.Name, err)
 			} else {
-				log.Printf("Service %s: %s\n", name, inspectData.Status)
+				log.Printf("Service %s: %s\n", service.Name, inspectData.Status)
 			}
 		}
 	case "run":
@@ -248,7 +309,10 @@ func main() {
 			}
 		}
 	case "stop":
-		for _, service := range config.Services {
+		// Stop in reverse dependency order (dependents first, then dependencies)
+		sorted := sortedServices(config)
+		for i := len(sorted) - 1; i >= 0; i-- {
+			service := sorted[i]
 			log.Printf("Stopping service %s\n", service.Name)
 			err := service.Stop()
 			if err != nil {
