@@ -64,9 +64,10 @@ container-compose stop
 | `services.<name>.platform` | `linux/amd64` | Translated to `--arch amd64` |
 | `services.<name>.environment` | `- FOO=bar` | Passed as `--env` flags |
 | `services.<name>.volumes` | `- ./data:/data` | Relative paths resolved from CWD |
+| `services.<name>.ports` | `- 3306:3306` | Passed as `-p` flags |
 | `services.<name>.deploy.resources.limits.memory` | `2G` | Passed as `--memory` |
 
-Fields like `ports`, `command`, `entrypoint`, `working_dir`, `restart`, `depends_on`, and `networks` are parsed from YAML but silently ignored at runtime.
+Fields like `command`, `entrypoint`, `working_dir`, `restart`, `depends_on`, and `networks` are parsed from YAML but silently ignored at runtime.
 
 ## How it works
 

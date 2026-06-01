@@ -22,7 +22,7 @@ type Service struct {
 	Name     string `yaml:"-"`
 	Image    string `yaml:"image"`
 	Platform string `yaml:"platform"`
-	// Ports       []string `yaml:"ports"` // TODO: HOW??
+	Ports       []string `yaml:"ports"`
 	Workdir     string   `yaml:"working_dir"`
 	Environment []string `yaml:"environment"`
 	Command     string   `yaml:"command"` // TODO?? Also entry-point?
@@ -119,6 +119,9 @@ func (service *Service) Start(detach bool, runArgs []string) error {
 	}
 	if service.Deploy.Resources.Limits.Memory != "" {
 		args = append(args, "--memory", service.Deploy.Resources.Limits.Memory)
+	}
+	for _, port := range service.Ports {
+		args = append(args, "-p", port)
 	}
 	for _, env := range service.Environment {
 		args = append(args, "--env", env)
