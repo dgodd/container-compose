@@ -24,7 +24,11 @@ go build -o container-compose .
 
 ## Usage
 
-All commands read `docker-compose.yml` from the current directory.
+All commands read `docker-compose.yml` from the current directory by default. Use `-f <file>` to specify a different compose file.
+
+```sh
+container-compose -f path/to/docker-compose.yml start
+```
 
 ### `container-compose start`
 
@@ -84,7 +88,7 @@ container-compose logs -n 50
 | `services.<name>.entrypoint` | `docker-entrypoint.sh` | Passed as `--entrypoint` flag |
 | `services.<name>.deploy.resources.limits.memory` | `2G` | Passed as `--memory` |
 
-Fields like `working_dir`, `restart`, `depends_on`, and `networks` are parsed from YAML but silently ignored at runtime.
+Fields like `working_dir`, `restart`, and `networks` are parsed from YAML but silently ignored at runtime.
 
 ## How it works
 
@@ -98,6 +102,8 @@ container stop <name>
 ```
 
 Containers are created with `--rm` so they are automatically removed when stopped.
+
+Container names are prefixed with the working directory name to avoid clashes between projects (e.g., `myproject-db`).
 
 ## License
 

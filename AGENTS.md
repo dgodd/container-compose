@@ -22,7 +22,7 @@ container-compose/
 
 - **Single-file application** — Everything lives in `main.go`. There is no framework, no sub-packages, and no external DI. Keep it this way unless complexity justifies extracting a package.
 - **No Docker dependency** — The tool shells out to a `container` binary (Apple's container runtime), not Docker. The JSON output format of `container inspect` is specific to this runtime.
-- **YAML-driven** — Reads `docker-compose.yml` from the current working directory at startup. No CLI flag for an alternate path.
+- **YAML-driven** — Reads `docker-compose.yml` from the current working directory at startup. Use `-f`/`--file` flag for an alternate path.
 
 ## `container inspect` JSON format
 
@@ -58,9 +58,10 @@ Only the following fields are consumed (others are silently ignored):
 | `services.<name>.ports` | `Service.Ports` | Passed as `-p` flags, supports `[host-ip:]host-port:container-port[/protocol]` |
 | `services.<name>.command` | `Service.Command` | Appended as positional args after the image on `container run` |
 | `services.<name>.entrypoint` | `Service.Entrypoint` | Passed as `--entrypoint` flag |
+| `services.<name>.depends_on` | `Service.DependsOn` | Used for startup ordering (topological sort) |
 | `services.<name>.deploy.resources.limits.memory` | `Service.Deploy.Resources.Limits.Memory` | Passed as `--memory` |
 
-**Not supported** (present in the YAML but ignored): `working_dir`, `deploy` (other than memory), `restart`, `depends_on`, `networks`, `healthcheck`, etc.
+**Not supported** (present in the YAML but ignored): `working_dir`, `deploy` (other than memory), `restart`, `networks`, `healthcheck`, etc.
 
 ## Commands
 
@@ -78,7 +79,7 @@ When starting, the tool compares the tag of the image the container was created 
 - The binary is `container` (must be on `$PATH`). System must be started with `container system start`.
 - Containers are created with `--detach --rm`. They are auto-removed on stop.
 - The `--dns-domain test` flag is hard-coded on new containers.
-- Container names match the docker-compose service name exactly (no prefix). This means service names must be unique and valid container names.
+- Container names are derived from the working directory name plus the service name (e.g. `myproject-db`) to avoid clashes between projects.
 
 ## Unfinished / TODO
 
