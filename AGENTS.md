@@ -82,4 +82,4 @@ When starting, the tool compares the tag of the image the container was created 
 
 ## Unfinished / TODO
 
-- `restart` policy is parsed in YAML but not passed to `container run`.
+- `restart` policy is parsed in YAML but not passed to `container run` (the macOS `container` runtime does not support restart policies).

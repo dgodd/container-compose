@@ -29,6 +29,7 @@ type Service struct {
 	Entrypoint  string   `yaml:"entrypoint"`
 	DependsOn   []string `yaml:"depends_on"`
 	Volumes     []string `yaml:"volumes"`
+	Restart     string   `yaml:"restart"`
 	Deploy      struct {
 		Resources struct {
 			Limits struct {
