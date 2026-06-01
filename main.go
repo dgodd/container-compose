@@ -19,17 +19,17 @@ type Config struct {
 }
 
 type Service struct {
-	Name     string `yaml:"-"`
-	Image    string `yaml:"image"`
-	Platform string `yaml:"platform"`
-	Ports       []string `yaml:"ports"`
-	Workdir     string   `yaml:"working_dir"`
-	Environment []string `yaml:"environment"`
-	Command     []string `yaml:"command"`
-	Entrypoint  string   `yaml:"entrypoint"`
-	DependsOn   []string `yaml:"depends_on"`
-	Volumes     []string `yaml:"volumes"`
-	Restart     string   `yaml:"restart"`
+	Name      string `yaml:"-"`
+	Image     string `yaml:"image"`
+	Platform  string `yaml:"platform"`
+	Ports       []string   `yaml:"ports"`
+	Workdir     string     `yaml:"working_dir"`
+	Environment Environment `yaml:"environment"`
+	Command     []string   `yaml:"command"`
+	Entrypoint  string     `yaml:"entrypoint"`
+	DependsOn   []string   `yaml:"depends_on"`
+	Volumes     []string   `yaml:"volumes"`
+	Restart     string     `yaml:"restart"`
 	Deploy      struct {
 		Resources struct {
 			Limits struct {
@@ -59,6 +59,35 @@ func getConfig(path string) (*Config, error) {
 		service.Name = config.Name + "-" + name
 	}
 	return &config, nil
+}
+
+type Environment []string
+
+func (e *Environment) UnmarshalYAML(value *yaml.Node) error {
+	// Try array format: ["KEY=VALUE", ...]
+	var arr []string
+	if err := value.Decode(&arr); err == nil {
+		*e = arr
+		return nil
+	}
+
+	// Try hash format: {KEY: VALUE, ...}
+	var m map[string]interface{}
+	if err := value.Decode(&m); err == nil {
+		var result []string
+		for k, v := range m {
+			switch val := v.(type) {
+			case nil:
+				result = append(result, k)
+			default:
+				result = append(result, k+"="+fmt.Sprint(val))
+			}
+		}
+		*e = result
+		return nil
+	}
+
+	return fmt.Errorf("environment must be an array of KEY=VALUE strings or a mapping")
 }
 
 type Network struct {

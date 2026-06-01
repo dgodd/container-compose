@@ -81,7 +81,7 @@ container-compose logs -n 50
 |---|---|---|
 | `services.<name>.image` | `redis:7-alpine` | Required. Full image reference. |
 | `services.<name>.platform` | `linux/amd64` | Translated to `--arch amd64` |
-| `services.<name>.environment` | `- FOO=bar` | Passed as `--env` flags |
+| `services.<name>.environment` | `- FOO=bar` | Passed as `--env` flags. Accepts array or hash form. |
 | `services.<name>.volumes` | `- ./data:/data` | Relative paths resolved from CWD |
 | `services.<name>.ports` | `- 3306:3306` | Passed as `-p` flags |
 | `services.<name>.command` | `- mysqld` | Appended as positional args after the image |

@@ -53,7 +53,7 @@ Only the following fields are consumed (others are silently ignored):
 |---|---|---|
 | `services.<name>.image` | `Service.Image` | Required. Full image reference. |
 | `services.<name>.platform` | `Service.Platform` | `linux/amd64` → `--arch amd64` |
-| `services.<name>.environment` | `Service.Environment` | Passed as `--env` flags |
+| `services.<name>.environment` | `Service.Environment` | Passed as `--env` flags. Accepts array (`KEY=VALUE`) or hash (`KEY: VALUE`) form. |
 | `services.<name>.volumes` | `Service.Volumes` | Relative paths resolved with `os.Getwd()`, `./` prefix trimmed |
 | `services.<name>.ports` | `Service.Ports` | Passed as `-p` flags, supports `[host-ip:]host-port:container-port[/protocol]` |
 | `services.<name>.command` | `Service.Command` | Appended as positional args after the image on `container run` |
