@@ -29,7 +29,7 @@ type Service struct {
 	Ports       []string   `yaml:"ports"`
 	Workdir     string     `yaml:"working_dir"`
 	Environment Environment `yaml:"environment"`
-	Command     []string   `yaml:"command"`
+	Command     StringOrStringList `yaml:"command"`
 	Entrypoint  string     `yaml:"entrypoint"`
 	DependsOn   []string   `yaml:"depends_on"`
 	Volumes     []string   `yaml:"volumes"`
@@ -44,13 +44,31 @@ type Service struct {
 }
 
 func getConfig(path string) (*Config, error) {
-	var config Config
-	fh, err := os.Open(path)
+	// Load the base compose file into a generic map
+	baseMap, err := loadYAMLToMap(path)
 	if err != nil {
 		return nil, err
 	}
-	defer fh.Close()
-	yaml.NewDecoder(fh).Decode(&config)
+
+	// Check for an override file and deep-merge if present
+	override := overridePath(path)
+	if override != "" {
+		overrideMap, err := loadYAMLToMap(override)
+		if err == nil {
+			log.Printf("Using override file %s\n", override)
+			baseMap = deepMerge(baseMap, overrideMap).(map[string]interface{})
+		}
+	}
+
+	// Decode the merged map into Config
+	merged, err := yaml.Marshal(baseMap)
+	if err != nil {
+		return nil, err
+	}
+	var config Config
+	if err := yaml.Unmarshal(merged, &config); err != nil {
+		return nil, err
+	}
 	if config.Name == "" {
 		dir, err := os.Getwd()
 		if err != nil {
@@ -65,7 +83,115 @@ func getConfig(path string) (*Config, error) {
 	return &config, nil
 }
 
+// loadYAMLToMap decodes a YAML file into a generic map[string]interface{}.
+func loadYAMLToMap(path string) (map[string]interface{}, error) {
+	fh, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	var m map[string]interface{}
+	if err := yaml.NewDecoder(fh).Decode(&m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// overridePath returns the path to an override file if one exists alongside the base file.
+// It checks both known filenames and both .yml / .yaml extensions:
+//   <base-stem>.override<ext>
+// where ext is first the base extension, then the alternate (.yml ↔ .yaml)
+// and for the alternate compose stem as well.
+// Returns "" when no override file is found.
+func overridePath(base string) string {
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	altExt := alternateYAMLExt(ext)
+	altStem := alternateComposeStem(stem)
+
+	candidates := []string{
+		stem + ".override" + ext,
+		stem + ".override" + altExt,
+	}
+	if altStem != "" {
+		candidates = append(candidates,
+			altStem+".override"+ext,
+			altStem+".override"+altExt,
+		)
+	}
+
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
+}
+
+// alternateYAMLExt returns the alternate YAML extension (.yml ↔ .yaml).
+func alternateYAMLExt(ext string) string {
+	switch ext {
+	case ".yml":
+		return ".yaml"
+	case ".yaml":
+		return ".yml"
+	default:
+		return ext
+	}
+}
+
+// alternateComposeStem returns the alternate stem name for a compose file stem.
+// e.g. "docker-compose" <-> "compose", otherwise "".
+func alternateComposeStem(stem string) string {
+	base := filepath.Base(stem)
+	switch base {
+	case "docker-compose":
+		return filepath.Join(filepath.Dir(stem), "compose")
+	case "compose":
+		return filepath.Join(filepath.Dir(stem), "docker-compose")
+	default:
+		return ""
+	}
+}
+
+// deepMerge merges src into dst and returns the result.
+// Slices are replaced, maps are merged recursively, scalars are overwritten.
+func deepMerge(dst, src interface{}) interface{} {
+	switch src := src.(type) {
+	case map[string]interface{}:
+		dstMap, ok := dst.(map[string]interface{})
+		if !ok {
+			// dst is not a map; src wins
+			return src
+		}
+		for k, v := range src {
+			dstMap[k] = deepMerge(dstMap[k], v)
+		}
+		return dstMap
+	default:
+		// Scalars and slices: src wins
+		return src
+	}
+}
+
 type Environment []string
+
+// StringOrStringList accepts a YAML string or array of strings.
+type StringOrStringList []string
+
+func (s *StringOrStringList) UnmarshalYAML(value *yaml.Node) error {
+	var single string
+	if err := value.Decode(&single); err == nil {
+		*s = []string{single}
+		return nil
+	}
+	var list []string
+	if err := value.Decode(&list); err == nil {
+		*s = list
+		return nil
+	}
+	return fmt.Errorf("expected a string or array of strings")
+}
 
 func (e *Environment) UnmarshalYAML(value *yaml.Node) error {
 	// Try array format: ["KEY=VALUE", ...]
