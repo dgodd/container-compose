@@ -25,7 +25,8 @@ type Service struct {
 	Ports       []string `yaml:"ports"`
 	Workdir     string   `yaml:"working_dir"`
 	Environment []string `yaml:"environment"`
-	Command     string   `yaml:"command"` // TODO?? Also entry-point?
+	Command     []string `yaml:"command"`
+	Entrypoint  string   `yaml:"entrypoint"`
 	Volumes     []string `yaml:"volumes"`
 	Deploy      struct {
 		Resources struct {
@@ -139,13 +140,13 @@ func (service *Service) Start(detach bool, runArgs []string) error {
 		}
 		args = append(args, "--volume", volume)
 	}
-	args = append(args, service.Image)
-	if service.Command != "" {
-		commands := strings.Split(service.Command, " ")
-		args = append(args, commands...)
+	if service.Entrypoint != "" {
+		args = append(args, "--entrypoint", service.Entrypoint)
 	}
+	args = append(args, service.Image)
+	args = append(args, service.Command...)
 	args = append(args, runArgs...)
-	fmt.Println("container", strings.Join(args, " "))
+	// fmt.Println("container", strings.Join(args, " "))
 	cmd := exec.Command("container", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

@@ -56,9 +56,11 @@ Only the following fields are consumed (others are silently ignored):
 | `services.<name>.environment` | `Service.Environment` | Passed as `--env` flags |
 | `services.<name>.volumes` | `Service.Volumes` | Relative paths resolved with `os.Getwd()`, `./` prefix trimmed |
 | `services.<name>.ports` | `Service.Ports` | Passed as `-p` flags, supports `[host-ip:]host-port:container-port[/protocol]` |
+| `services.<name>.command` | `Service.Command` | Appended as positional args after the image on `container run` |
+| `services.<name>.entrypoint` | `Service.Entrypoint` | Passed as `--entrypoint` flag |
 | `services.<name>.deploy.resources.limits.memory` | `Service.Deploy.Resources.Limits.Memory` | Passed as `--memory` |
 
-**Not supported** (present in the YAML but ignored): `command`, `entrypoint`, `working_dir`, `deploy` (other than memory), `restart`, `depends_on`, `networks`, `healthcheck`, etc.
+**Not supported** (present in the YAML but ignored): `working_dir`, `deploy` (other than memory), `restart`, `depends_on`, `networks`, `healthcheck`, etc.
 
 ## Commands
 
@@ -79,5 +81,4 @@ When starting, the tool compares the tag of the image the container was created 
 
 ## Unfinished / TODO
 
-- `command` and `entrypoint` are parsed in YAML but not passed to `container run`.
 - Error handling is basic: `status` and `stop` use `log.Fatal` on first error; `start` logs errors and continues.

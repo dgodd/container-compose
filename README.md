@@ -65,9 +65,11 @@ container-compose stop
 | `services.<name>.environment` | `- FOO=bar` | Passed as `--env` flags |
 | `services.<name>.volumes` | `- ./data:/data` | Relative paths resolved from CWD |
 | `services.<name>.ports` | `- 3306:3306` | Passed as `-p` flags |
+| `services.<name>.command` | `- mysqld` | Appended as positional args after the image |
+| `services.<name>.entrypoint` | `docker-entrypoint.sh` | Passed as `--entrypoint` flag |
 | `services.<name>.deploy.resources.limits.memory` | `2G` | Passed as `--memory` |
 
-Fields like `command`, `entrypoint`, `working_dir`, `restart`, `depends_on`, and `networks` are parsed from YAML but silently ignored at runtime.
+Fields like `working_dir`, `restart`, `depends_on`, and `networks` are parsed from YAML but silently ignored at runtime.
 
 ## How it works
 
