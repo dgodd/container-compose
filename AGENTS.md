@@ -13,7 +13,8 @@ container-compose/
 ├── AGENTS.md             # This file
 ├── README.md             # User-facing documentation
 ├── go.mod / go.sum       # Go module definition (depends on gopkg.in/yaml.v3)
-├── .buildkite/           # CI configuration
+├── .buildkite/           # Buildkite CI configuration
+├── .github/workflows/    # GitHub Actions CI configuration (build + release)
 └── tmp/                  # Local working directory (gitignored)
 ```
 
