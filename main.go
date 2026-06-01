@@ -166,6 +166,21 @@ func (service *Service) StartExisting() error {
 	return cmd.Run()
 }
 
+func (service *Service) Logs(follow bool, tail int) error {
+	args := []string{"logs"}
+	if follow {
+		args = append(args, "-f")
+	}
+	if tail > 0 {
+		args = append(args, "-n", fmt.Sprintf("%d", tail))
+	}
+	args = append(args, service.Name)
+	cmd := exec.Command("container", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 func imageTagsDiffer(configured, reference string) bool {
 	// Extract tag from configured image (default "latest")
 	cfgTag := "latest"
@@ -247,7 +262,7 @@ func main() {
 	}
 
 	if !(len(os.Args) == 2 || (len(os.Args) >= 3 && os.Args[1] == "run")) {
-		log.Fatalf("Usage: %s <start|status|run serviceName|stop>", os.Args[0])
+		log.Fatalf("Usage: %s <start|status|run|stop|logs>", os.Args[0])
 	}
 
 	switch os.Args[1] {
@@ -319,7 +334,30 @@ func main() {
 				log.Fatal(err)
 			}
 		}
+	case "logs":
+		follow := false
+		tail := 0
+		args := os.Args[2:]
+		for i := 0; i < len(args); i++ {
+			switch args[i] {
+			case "-f", "--follow":
+				follow = true
+			case "-n":
+				if i+1 < len(args) {
+					fmt.Sscanf(args[i+1], "%d", &tail)
+					i++
+				}
+			default:
+				log.Fatalf("Usage: %s logs [-f] [-n N]", os.Args[0])
+			}
+		}
+		for _, service := range sortedServices(config) {
+			err := service.Logs(follow, tail)
+			if err != nil {
+				log.Println("ERROR:", err)
+			}
+		}
 	default:
-		log.Fatalf("Usage: %s <start|status|run|stop>", os.Args[0])
+		log.Fatalf("Usage: %s <start|status|run|stop|logs>", os.Args[0])
 	}
 }
