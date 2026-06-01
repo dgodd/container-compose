@@ -65,8 +65,9 @@ Only the following fields are consumed (others are silently ignored):
 ## Commands
 
 - **`container-compose start`** — For each service: inspect the container. If it exists and is running, skip. If it exists but is stopped, start it. If it doesn't exist, create and run it. Compares the container's image tag against `docker-compose.yml` and warns on mismatch. Repeats all warnings at the end.
-- **`container-compose status`** — Inspects each service and prints its status (or error if container doesn't exist).
+- **`container-compose status`** (or `ps`, `ls`) — Inspects each service and prints its status (or error if container doesn't exist).
 - **`container-compose stop`** — Stops each service's container.
+- **`container-compose logs`** — Prints or streams logs from all service containers. Supports `-f`/`--follow` and `-n N`.
 
 ## Image version alerts
 

@@ -40,7 +40,7 @@ If the image tag of an existing container differs from what's specified in `dock
 container-compose start
 ```
 
-### `container-compose status`
+### `container-compose status` (or `ps`, `ls`)
 
 Prints the status of each service's container (e.g., `running`, or an error if the container does not exist).
 
@@ -54,6 +54,21 @@ Stops all running service containers.
 
 ```sh
 container-compose stop
+```
+
+### `container-compose logs`
+
+Prints or streams logs from all service containers. Supports the following flags:
+
+| Flag | Description |
+|---|---|
+| `-f`, `--follow` | Follow log output (stream) |
+| `-n N` | Show only the last N lines |
+
+```sh
+container-compose logs
+container-compose logs -f
+container-compose logs -n 50
 ```
 
 ## Supported `docker-compose.yml` fields

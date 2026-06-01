@@ -262,7 +262,7 @@ func main() {
 	}
 
 	if !(len(os.Args) == 2 || (len(os.Args) >= 3 && os.Args[1] == "run")) {
-		log.Fatalf("Usage: %s <start|status|run|stop|logs>", os.Args[0])
+		log.Fatalf("Usage: %s <start|status|ps|ls|run|stop|logs>", os.Args[0])
 	}
 
 	switch os.Args[1] {
@@ -304,7 +304,7 @@ func main() {
 				log.Println(alert)
 			}
 		}
-	case "status":
+	case "status", "ps", "ls":
 		for _, service := range sortedServices(config) {
 			inspectData, err := service.Inspect()
 			if err != nil {
@@ -358,6 +358,6 @@ func main() {
 			}
 		}
 	default:
-		log.Fatalf("Usage: %s <start|status|run|stop|logs>", os.Args[0])
+		log.Fatalf("Usage: %s <start|status|ps|ls|run|stop|logs>", os.Args[0])
 	}
 }
