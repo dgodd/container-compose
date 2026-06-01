@@ -65,9 +65,18 @@ type Network struct {
 	Network  string `json:"network"`
 }
 
+type InspectConfigImage struct {
+	Reference string `json:"reference"`
+}
+
+type InspectConfiguration struct {
+	Image InspectConfigImage `json:"image"`
+}
+
 type InspectData struct {
-	Status   string    `json:"status"`
-	Networks []Network `json:"networks"`
+	Status        string              `json:"status"`
+	Networks      []Network           `json:"networks"`
+	Configuration InspectConfiguration `json:"configuration"`
 }
 
 func (service *Service) Inspect() (*InspectData, error) {
@@ -144,6 +153,29 @@ func (service *Service) Stop() error {
 	return exec.Command("container", "stop", service.Name).Run()
 }
 
+func (service *Service) StartExisting() error {
+	log.Printf("Starting existing container %s\n", service.Name)
+	cmd := exec.Command("container", "start", service.Name)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func imageTagsDiffer(configured, reference string) bool {
+	// Extract tag from configured image (default "latest")
+	cfgTag := "latest"
+	if idx := strings.LastIndex(configured, ":"); idx != -1 {
+		cfgTag = configured[idx+1:]
+	}
+
+	// Extract tag from reference
+	refTag := "latest"
+	if idx := strings.LastIndex(reference, ":"); idx != -1 {
+		refTag = reference[idx+1:]
+	}
+
+	return cfgTag != refTag
+}
 func main() {
 	config, err := getConfig()
 	if err != nil {
@@ -156,21 +188,41 @@ func main() {
 
 	switch os.Args[1] {
 	case "start":
-		var anyError error
+		var alerts []string
 		for name, service := range config.Services {
 			inspectData, err := service.Inspect()
-			if err == nil && inspectData.Status == "running" {
-				log.Printf("Service %s is already running\n", name)
-				continue
-			}
-			log.Printf("Starting service %s\n", service.Name)
-			if err := service.Start(true, nil); err != nil {
-				anyError = err
-				log.Println("ERROR:", err)
+			if err == nil {
+				// Container exists
+				if inspectData.Configuration.Image.Reference != "" {
+					if imageTagsDiffer(service.Image, inspectData.Configuration.Image.Reference) {
+						alert := fmt.Sprintf("WARNING: Service %s is using image %s but docker-compose.yml specifies %s",
+							name, inspectData.Configuration.Image.Reference, service.Image)
+						log.Println(alert)
+						alerts = append(alerts, alert)
+					}
+				}
+
+				if inspectData.Status == "running" {
+					log.Printf("Service %s is already running\n", name)
+					continue
+				}
+
+				if err := service.StartExisting(); err != nil {
+					log.Println("ERROR:", err)
+				}
+			} else {
+				// Container doesn't exist, create a new one
+				log.Printf("Starting service %s\n", service.Name)
+				if err := service.Start(true, nil); err != nil {
+					log.Println("ERROR:", err)
+				}
 			}
 		}
-		if anyError != nil {
-			log.Fatal(anyError)
+		if len(alerts) > 0 {
+			log.Println("--- Image version alerts ---")
+			for _, alert := range alerts {
+				log.Println(alert)
+			}
 		}
 	case "status":
 		for name, service := range config.Services {
