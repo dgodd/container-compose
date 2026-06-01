@@ -32,7 +32,7 @@ jobs:
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o dist/container-compose-${{ matrix.goos }}-${{ matrix.goarch }} .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v7
         with:
           name: container-compose-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/container-compose-${{ matrix.goos }}-${{ matrix.goarch }}
