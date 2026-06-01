@@ -300,7 +300,8 @@ Options:
   -v, --version       Show version information and exit
 
 Commands:
-  start               Start all services (creates containers if needed)
+  start [services...]  Start services (creates containers if needed).
+                       Defaults to all services if none are named.
   stop                Stop all services
   status, ps, ls      Show status of all services
   logs [options]      Print or stream logs from services
@@ -344,15 +345,30 @@ parseCommand:
 		log.Fatal(err)
 	}
 
-	if !(len(os.Args) == 2 || (len(os.Args) >= 3 && os.Args[1] == "run")) {
-		printUsage()
+	// run requires a service name; all other commands accept optional service names.
+	if args[0] == "run" && len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "Usage: container-compose run <service> [args]")
 		os.Exit(1)
 	}
 
 	switch args[0] {
-	case "start":
-		var alerts []string
-		for _, service := range sortedServices(config) {
+		case "start":
+			var selectedServices []*Service
+			if len(args) > 1 {
+				// User specified service names; only start those
+				for _, name := range args[1:] {
+					svc, ok := config.Services[name]
+					if !ok {
+						log.Fatalf("Unknown service: %s", name)
+					}
+					selectedServices = append(selectedServices, svc)
+				}
+			} else {
+				selectedServices = sortedServices(config)
+			}
+
+			var alerts []string
+			for _, service := range selectedServices {
 			name := service.Name
 			inspectData, err := service.Inspect()
 			if err == nil {
