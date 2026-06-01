@@ -13,6 +13,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Version is set at build time via ldflags (e.g. -ldflags="-X main.Version=1.0.0").
+// When built without ldflags it reports "dev".
+var Version = "dev"
+
 type Config struct {
 	Name     string              `yaml:"name"`
 	Services map[string]*Service `yaml:"services"`
@@ -285,6 +289,27 @@ func sortedServices(config *Config) []*Service {
 	return sorted
 }
 
+func printUsage() {
+	fmt.Print(`Usage: container-compose [OPTIONS] <COMMAND> [ARGS]
+
+A lightweight Docker Compose alternative for Apple's container runtime.
+
+Options:
+  -f, --file <file>   Path to docker-compose.yml (default: docker-compose.yml)
+  -h, --help          Show this help message and exit
+  -v, --version       Show version information and exit
+
+Commands:
+  start               Start all services (creates containers if needed)
+  stop                Stop all services
+  status, ps, ls      Show status of all services
+  logs [options]      Print or stream logs from services
+  run <service>       Run a single service command (attached)
+
+Run 'container-compose <command> --help' for more information on a command.
+` + "\n")
+}
+
 func main() {
 	composeFile := "docker-compose.yml"
 	args := os.Args[1:]
@@ -292,10 +317,17 @@ func main() {
 		switch args[0] {
 		case "-f", "--file":
 			if len(args) < 2 {
-				log.Fatal("Usage: container-compose [-f <file>] <command> [args]")
+				fmt.Fprintln(os.Stderr, "Usage: container-compose [-f <file>] <command> [args]")
+				os.Exit(1)
 			}
 			composeFile = args[1]
 			args = args[2:]
+		case "-v", "--version":
+			fmt.Printf("container-compose version %s\n", Version)
+			os.Exit(0)
+		case "-h", "--help":
+			printUsage()
+			os.Exit(0)
 		default:
 			goto parseCommand
 		}
@@ -303,7 +335,8 @@ func main() {
 
 parseCommand:
 	if len(args) < 1 {
-		log.Fatalf("Usage: container-compose [-f <file>] <start|status|ps|ls|stop|logs> [args]")
+		printUsage()
+		os.Exit(1)
 	}
 
 	config, err := getConfig(composeFile)
@@ -312,7 +345,8 @@ parseCommand:
 	}
 
 	if !(len(os.Args) == 2 || (len(os.Args) >= 3 && os.Args[1] == "run")) {
-		log.Fatalf("Usage: %s <start|status|ps|ls|run|stop|logs>", os.Args[0])
+		printUsage()
+		os.Exit(1)
 	}
 
 	switch args[0] {
