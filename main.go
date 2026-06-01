@@ -38,9 +38,9 @@ type Service struct {
 	} `yaml:"deploy"`
 }
 
-func getConfig() (*Config, error) {
+func getConfig(path string) (*Config, error) {
 	var config Config
-	fh, err := os.Open("docker-compose.yml")
+	fh, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,27 @@ func sortedServices(config *Config) []*Service {
 }
 
 func main() {
-	config, err := getConfig()
+	composeFile := "docker-compose.yml"
+	args := os.Args[1:]
+	for len(args) > 0 {
+		switch args[0] {
+		case "-f", "--file":
+			if len(args) < 2 {
+				log.Fatal("Usage: container-compose [-f <file>] <command> [args]")
+			}
+			composeFile = args[1]
+			args = args[2:]
+		default:
+			goto parseCommand
+		}
+	}
+
+parseCommand:
+	if len(args) < 1 {
+		log.Fatalf("Usage: container-compose [-f <file>] <start|status|ps|ls|stop|logs> [args]")
+	}
+
+	config, err := getConfig(composeFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -265,7 +285,7 @@ func main() {
 		log.Fatalf("Usage: %s <start|status|ps|ls|run|stop|logs>", os.Args[0])
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "start":
 		var alerts []string
 		for _, service := range sortedServices(config) {
@@ -337,8 +357,7 @@ func main() {
 	case "logs":
 		follow := false
 		tail := 0
-		args := os.Args[2:]
-		for i := 0; i < len(args); i++ {
+		for i := 1; i < len(args); i++ {
 			switch args[i] {
 			case "-f", "--follow":
 				follow = true
@@ -348,7 +367,7 @@ func main() {
 					i++
 				}
 			default:
-				log.Fatalf("Usage: %s logs [-f] [-n N]", os.Args[0])
+				log.Fatalf("Usage: container-compose logs [-f] [-n N]")
 			}
 		}
 		for _, service := range sortedServices(config) {
