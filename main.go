@@ -342,6 +342,11 @@ func (service *Service) Logs(follow bool, tail int) error {
 	return cmd.Run()
 }
 
+// imageExists checks whether the given image reference is available in the container runtime.
+func imageExists(image string) bool {
+	return exec.Command("container", "image", "inspect", image).Run() == nil
+}
+
 func imageTagsDiffer(configured, reference string) bool {
 	// Extract tag from configured image (default "latest")
 	cfgTag := "latest"
@@ -587,7 +592,11 @@ parseCommand:
 		for _, service := range servicesByProfile(config, activeProfiles) {
 			inspectData, err := service.Inspect()
 			if err != nil {
-				statusErrors = append(statusErrors, fmt.Sprintf("Service %s: %s", service.Name, err))
+				if imageExists(service.Image) {
+					statusErrors = append(statusErrors, fmt.Sprintf("Service %s: %s (image %s is available)", service.Name, err, service.Image))
+				} else {
+					statusErrors = append(statusErrors, fmt.Sprintf("Service %s: %s (image %s not pulled)", service.Name, err, service.Image))
+				}
 			} else {
 				log.Printf("Service %s: %s\n", service.Name, inspectData.Status)
 			}
