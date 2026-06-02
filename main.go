@@ -33,6 +33,7 @@ type Service struct {
 	Entrypoint  string     `yaml:"entrypoint"`
 	DependsOn   []string   `yaml:"depends_on"`
 	Volumes     []string   `yaml:"volumes"`
+	Profiles    []string   `yaml:"profiles"`
 	Restart     string     `yaml:"restart"`
 	Deploy      struct {
 		Resources struct {
@@ -415,6 +416,37 @@ func sortedServices(config *Config) []*Service {
 	return sorted
 }
 
+// servicesByProfile filters the sorted service list to only those
+// matching at least one active profile. Services with no profiles
+// are always included.
+func servicesByProfile(config *Config, activeProfiles []string) []*Service {
+	all := sortedServices(config)
+	var filtered []*Service
+	for _, svc := range all {
+		if profileEnabled(svc.Profiles, activeProfiles) {
+			filtered = append(filtered, svc)
+		}
+	}
+	return filtered
+}
+
+// profileEnabled returns true if the service should be included.
+// A service with no profiles is always included.
+// Otherwise, at least one of its profiles must be in the active set.
+func profileEnabled(serviceProfiles, activeProfiles []string) bool {
+	if len(serviceProfiles) == 0 {
+		return true
+	}
+	for _, sp := range serviceProfiles {
+		for _, ap := range activeProfiles {
+			if sp == ap {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func printUsage() {
 	fmt.Print(`Usage: container-compose [OPTIONS] <COMMAND> [ARGS]
 
@@ -422,12 +454,13 @@ A lightweight Docker Compose alternative for Apple's container runtime.
 
 Options:
   -f, --file <file>   Path to docker-compose.yml (default: docker-compose.yml)
+  --profile <name>    Activate a profile (can be specified multiple times)
   -h, --help          Show this help message and exit
   -v, --version       Show version information and exit
 
 Commands:
   start [services...]  Start services (creates containers if needed).
-                       Defaults to all services if none are named.
+                       Defaults to all services, filtered by active profiles.
   stop                Stop all services
   status, ps, ls      Show status of all services
   logs [options]      Print or stream logs from services
@@ -439,6 +472,18 @@ Run 'container-compose <command> --help' for more information on a command.
 
 func main() {
 	composeFile := "docker-compose.yml"
+	var activeProfiles []string
+
+	// Read COMPOSE_PROFILES from environment (comma-separated)
+	if envProfiles := os.Getenv("COMPOSE_PROFILES"); envProfiles != "" {
+		for _, p := range strings.Split(envProfiles, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				activeProfiles = append(activeProfiles, p)
+			}
+		}
+	}
+
 	args := os.Args[1:]
 	for len(args) > 0 {
 		switch args[0] {
@@ -448,6 +493,13 @@ func main() {
 				os.Exit(1)
 			}
 			composeFile = args[1]
+			args = args[2:]
+		case "--profile":
+			if len(args) < 2 {
+				fmt.Fprintln(os.Stderr, "Usage: container-compose --profile <name>")
+				os.Exit(1)
+			}
+			activeProfiles = append(activeProfiles, args[1])
 			args = args[2:]
 		case "-v", "--version":
 			fmt.Printf("container-compose version %s\n", Version)
@@ -490,7 +542,7 @@ parseCommand:
 					selectedServices = append(selectedServices, svc)
 				}
 			} else {
-				selectedServices = sortedServices(config)
+				selectedServices = servicesByProfile(config, activeProfiles)
 			}
 
 			var alerts []string
@@ -531,8 +583,8 @@ parseCommand:
 			}
 		}
 	case "status", "ps", "ls":
-		var statusErrors []string
-		for _, service := range sortedServices(config) {
+			var statusErrors []string
+		for _, service := range servicesByProfile(config, activeProfiles) {
 			inspectData, err := service.Inspect()
 			if err != nil {
 				statusErrors = append(statusErrors, fmt.Sprintf("Service %s: %s", service.Name, err))
@@ -559,7 +611,7 @@ parseCommand:
 	case "stop":
 		var stopErrors []string
 		// Stop in reverse dependency order (dependents first, then dependencies)
-		sorted := sortedServices(config)
+		sorted := servicesByProfile(config, activeProfiles)
 		for i := len(sorted) - 1; i >= 0; i-- {
 			service := sorted[i]
 			log.Printf("Stopping service %s\n", service.Name)
@@ -590,7 +642,7 @@ parseCommand:
 				log.Fatalf("Usage: container-compose logs [-f] [-n N]")
 			}
 		}
-		for _, service := range sortedServices(config) {
+		for _, service := range servicesByProfile(config, activeProfiles) {
 			err := service.Logs(follow, tail)
 			if err != nil {
 				log.Println("ERROR:", err)
