@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -222,8 +221,8 @@ func (e *Environment) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type Network struct {
-	Address  string `json:"address"`
-	Gateway  string `json:"gateway"`
+	Address  string `json:"ipv4Address"`
+	Gateway  string `json:"ipv4Gateway"`
 	Hostname string `json:"hostname"`
 	Network  string `json:"network"`
 }
@@ -236,29 +235,27 @@ type InspectConfiguration struct {
 	Image InspectConfigImage `json:"image"`
 }
 
+type InspectStatus struct {
+	State    string    `json:"state"`
+	Networks []Network `json:"networks"`
+}
+
 type InspectData struct {
-	Status        string              `json:"status"`
-	Networks      []Network           `json:"networks"`
+	Status        InspectStatus        `json:"status"`
 	Configuration InspectConfiguration `json:"configuration"`
 }
 
 func (service *Service) Inspect() (*InspectData, error) {
-	r, w := io.Pipe()
-	decoder := json.NewDecoder(r)
 	cmd := exec.Command("container", "inspect", service.Name)
-	cmd.Stdout = w
-	cmd.Stderr = os.Stderr
-	err := cmd.Start()
+	out, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("%s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
 		return nil, err
 	}
 	var inspectData []InspectData
-	err = decoder.Decode(&inspectData)
-	if err != nil {
-		return nil, err
-	}
-	err = cmd.Wait()
-	if err != nil {
+	if err := json.Unmarshal(out, &inspectData); err != nil {
 		return nil, err
 	}
 	if len(inspectData) == 0 {
@@ -565,7 +562,7 @@ parseCommand:
 					}
 				}
 
-				if inspectData.Status == "running" {
+				if inspectData.Status.State == "running" {
 					log.Printf("Service %s is already running\n", name)
 					continue
 				}
@@ -598,7 +595,7 @@ parseCommand:
 					statusErrors = append(statusErrors, fmt.Sprintf("Service %s: %s (image %s not pulled)", service.Name, err, service.Image))
 				}
 			} else {
-				log.Printf("Service %s: %s\n", service.Name, inspectData.Status)
+				log.Printf("Service %s: %s\n", service.Name, inspectData.Status.State)
 			}
 		}
 		if len(statusErrors) > 0 {
