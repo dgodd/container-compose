@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -306,10 +310,152 @@ func (service *Service) Start(detach bool, runArgs []string) error {
 	args = append(args, service.Command...)
 	args = append(args, runArgs...)
 	// fmt.Println("container", strings.Join(args, " "))
+	return runContainerWithAuthRetry(args, service.Image)
+}
+
+// runContainerCmd runs `container <args...>`, streaming stdout/stderr to the
+// user while also capturing stderr so callers can inspect it for errors.
+func runContainerCmd(args []string) (stderrOutput string, err error) {
 	cmd := exec.Command("container", args...)
+	var stderrBuf bytes.Buffer
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
+	err = cmd.Run()
+	return stderrBuf.String(), err
+}
+
+// runContainerWithAuthRetry runs `container <args...>` and, if it fails with a
+// registry authentication error, attempts to log in to the image's registry
+// and retries once.
+func runContainerWithAuthRetry(args []string, image string) error {
+	stderrOut, err := runContainerCmd(args)
+	if err == nil || !isAuthError(stderrOut) {
+		return err
+	}
+	host := registryHost(image)
+	if host == "" {
+		return err
+	}
+	log.Printf("Authentication required for registry %s, attempting login...\n", host)
+	if loginErr := loginToRegistry(host); loginErr != nil {
+		return fmt.Errorf("%s (auto-login failed: %v)", strings.TrimSpace(stderrOut), loginErr)
+	}
+	_, err = runContainerCmd(args)
+	return err
+}
+
+// isAuthError reports whether container output looks like a registry
+// authentication failure (e.g. a 401 from Docker Hub or ECR).
+func isAuthError(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(output, "401") ||
+		strings.Contains(lower, "unauthorized") ||
+		strings.Contains(lower, "access denied") ||
+		strings.Contains(lower, "no credentials found")
+}
+
+// registryHost extracts the registry hostname from an image reference, or
+// returns "" if the image uses the default registry (Docker Hub), which
+// needs no login.
+func registryHost(image string) string {
+	ref := image
+	if idx := strings.Index(ref, "@"); idx != -1 {
+		ref = ref[:idx]
+	}
+	parts := strings.SplitN(ref, "/", 2)
+	if len(parts) < 2 {
+		return ""
+	}
+	first := parts[0]
+	if strings.Contains(first, ".") || strings.Contains(first, ":") || first == "localhost" {
+		return first
+	}
+	return ""
+}
+
+var ecrHostPattern = regexp.MustCompile(`^\d+\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com$`)
+
+// loginToRegistry logs the container runtime in to the given registry host.
+// For AWS ECR hosts, it uses the AWS CLI (via AWS_PROFILE, or a prompt if
+// unset) to mint a short-lived password. For any other registry, it uses
+// CONTAINER_REGISTRY_USERNAME/CONTAINER_REGISTRY_PASSWORD, or prompts for
+// them if unset.
+func loginToRegistry(host string) error {
+	if m := ecrHostPattern.FindStringSubmatch(host); m != nil {
+		return loginToECR(host, m[1])
+	}
+	return loginGeneric(host)
+}
+
+func loginToECR(host, region string) error {
+	profile := os.Getenv("AWS_PROFILE")
+	if profile == "" {
+		profile = readLine(fmt.Sprintf("AWS profile for %s (blank for default credentials): ", host))
+	}
+
+	args := []string{"ecr", "get-login-password", "--region", region}
+	if profile != "" {
+		args = append(args, "--profile", profile)
+	}
+	cmd := exec.Command("aws", args...)
+	var out, stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("aws ecr get-login-password failed: %s", strings.TrimSpace(stderr.String()))
+	}
+
+	return containerRegistryLogin(host, "AWS", strings.TrimSpace(out.String()))
+}
+
+func loginGeneric(host string) error {
+	username := os.Getenv("CONTAINER_REGISTRY_USERNAME")
+	if username == "" {
+		username = readLine(fmt.Sprintf("Username for %s: ", host))
+	}
+	password := os.Getenv("CONTAINER_REGISTRY_PASSWORD")
+	if password == "" {
+		password = readSecret(fmt.Sprintf("Password for %s: ", host))
+	}
+	return containerRegistryLogin(host, username, password)
+}
+
+func containerRegistryLogin(host, username, password string) error {
+	cmd := exec.Command("container", "registry", "login", host, "--username", username, "--password-stdin")
+	cmd.Stdin = strings.NewReader(password)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("container registry login failed: %s", strings.TrimSpace(stderr.String()))
+	}
+	log.Printf("Logged in to registry %s\n", host)
+	return nil
+}
+
+// readLine prompts on stderr and reads a line of input from stdin.
+func readLine(prompt string) string {
+	fmt.Fprint(os.Stderr, prompt)
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	return strings.TrimSpace(line)
+}
+
+// readSecret prompts on stderr and reads a line of input from stdin with
+// terminal echo disabled where possible.
+func readSecret(prompt string) string {
+	fmt.Fprint(os.Stderr, prompt)
+	disable := exec.Command("stty", "-echo")
+	disable.Stdin = os.Stdin
+	echoDisabled := disable.Run() == nil
+	if echoDisabled {
+		defer func() {
+			restore := exec.Command("stty", "echo")
+			restore.Stdin = os.Stdin
+			restore.Run()
+			fmt.Fprintln(os.Stderr)
+		}()
+	}
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	return strings.TrimSpace(line)
 }
 
 func (service *Service) Stop() error {
@@ -467,6 +613,7 @@ Commands:
   status, ps, ls      Show status of all services
   logs [options]      Print or stream logs from services
   run <service>       Run a single service command (attached)
+  login [services...] Log in to the registries used by services' images
 
 Run 'container-compose <command> --help' for more information on a command.
 ` + "\n")
@@ -630,6 +777,30 @@ parseCommand:
 			log.Println("--- Errors ---")
 			for _, errMsg := range stopErrors {
 				log.Println(errMsg)
+			}
+		}
+	case "login":
+		var selectedServices []*Service
+		if len(args) > 1 {
+			for _, name := range args[1:] {
+				svc, ok := config.Services[name]
+				if !ok {
+					log.Fatalf("Unknown service: %s", name)
+				}
+				selectedServices = append(selectedServices, svc)
+			}
+		} else {
+			selectedServices = servicesByProfile(config, activeProfiles)
+		}
+		seenHosts := make(map[string]bool)
+		for _, service := range selectedServices {
+			host := registryHost(service.Image)
+			if host == "" || seenHosts[host] {
+				continue
+			}
+			seenHosts[host] = true
+			if err := loginToRegistry(host); err != nil {
+				log.Println("ERROR:", err)
 			}
 		}
 	case "logs":
