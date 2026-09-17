@@ -4,7 +4,7 @@ A lightweight alternative to `docker-compose` for macOS that manages containers 
 
 ## Prerequisites
 
-- macOS with the [Apple `container` runtime](https://github.com/apple/container-oss) installed and available on `$PATH`
+- macOS with the [Apple `container` runtime](https://github.com/apple/container) installed and available on `$PATH`
 - The container system must be started:
 
   ```sh
